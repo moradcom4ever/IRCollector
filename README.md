@@ -45,7 +45,9 @@ Install Active Directory PowerShell module:
 On Windows Server, you can install the Active Directory module as a part of the Remote Server Administration Tools (RSAT) feature. Run the following command in PowerShell with administrator privileges:
 mathematica
 Copy code
+
 PS> Install-WindowsFeature RSAT-AD-PowerShell
+
 On Windows 10, you can download and install RSAT for your version of Windows 10 from the following link: https://www.microsoft.com/en-us/download/details.aspx?id=45520
 Install Microsoft Exchange Management Shell:
 
@@ -53,7 +55,9 @@ For Exchange Server 2016 or 2019, follow the instructions in this Microsoft arti
 For Exchange Online (Office 365), you can install the Exchange Online Management module by running the following command in PowerShell with administrator privileges:
 mathematica
 Copy code
+
 PS> Install-Module -Name ExchangeOnlineManagement
+
 Note that this requires PowerShellGet, which is included in PowerShell 5.1.
 Administrative access to the Exchange server and Active Directory:
 
