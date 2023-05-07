@@ -57,9 +57,12 @@ $username = Read-Host "Username"
 # Get the user's distinguished name
 $UserDistinguishedName = (Get-ADUser -Identity $username).DistinguishedName
 
+# Get the Domain Controller name
+$Domain = Read-Host "Domain"
+
 # Query the AD replication attribute metadata for changes to the msExchGenericForwardingAddress property
 Write-Host "Step 6: Searching for changes to the msExchGenericForwardingAddress property in Active Directory..." -ForegroundColor Green
-$Changes = Get-ADReplicationAttributeMetadata -Object $UserDistinguishedName -Properties msExchGenericForwardingAddress -ChangedAfter $selectedStartDate
+$Changes = Get-ADReplicationAttributeMetadata -Object $UserDistinguishedName -Properties msExchGenericForwardingAddress $Domain -ChangedAfter $selectedStartDate
 Write-Host "Active Directory audit logs retrieved." -ForegroundColor Yellow
 Write-Host ""
 
