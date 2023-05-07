@@ -1,112 +1,124 @@
-# Import ActiveDirectory module
-Import-Module ActiveDirectory
+# Check if PowerShell version is 5.1 or later
+Write-Host "Checking PowerShell version..." -ForegroundColor Green
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    Write-Host "PowerShell 5.1 or later is required. Please update PowerShell and try again." -ForegroundColor Red
+}
 
-# Welcome message
-Write-Host "Jordan NCSC, DF team - Email Forwarding Audit Script" -ForegroundColor Cyan
-Write-Host "This script will check for suspicious activities related to email forwarding changes in Exchange and Active Directory." -ForegroundColor Cyan
-Write-Host ""
+# Check if Active Directory PowerShell module is installed
+Write-Host "Checking Active Directory PowerShell module..." -ForegroundColor Green
+if (-not (Get-Module -ListAvailable -Name ActiveDirectory)) {
+    Write-Host "Active Directory PowerShell module is not installed. Please install it and try again." -ForegroundColor Red
+}
 
-# Enable Admin Audit Log if it's not already enabled
-Write-Host "Step 1: Enabling the Admin Audit Log (if not already enabled)..." -ForegroundColor Green
-Set-AdminAuditLogConfig -AdminAuditLogEnabled $true
-Write-Host "Admin Audit Log enabled." -ForegroundColor Yellow
-Write-Host ""
+# Import necessary modules
+Write-Host "Importing required modules..." -ForegroundColor Green
+try {
+    Import-Module ActiveDirectory
+    . $env:ExchangeInstallPath\bin\RemoteExchange.ps1
+    Connect-ExchangeServer -auto
+} catch {
+    Write-Host "Error loading required modules: $_" -ForegroundColor Red
+}
+
+# Enable Admin Audit Log
+Write-Host "Enabling Admin Audit Log..." -ForegroundColor Green
+try {
+    Set-AdminAuditLogConfig -AdminAuditLogEnabled $true
+} catch {
+    Write-Host "Error enabling Admin Audit Log: $_" -ForegroundColor Red
+}
 
 # Prompt the user for the suspected email address
-Write-Host "Step 2: Enter the suspected email address..." -ForegroundColor Green
-$suspectedEmailAddress = Read-Host "Email address"
+Write-Host "Step 1: Enter the suspected email address" -ForegroundColor Green
+$suspectedEmail = Read-Host "Suspected Email Address"
 Write-Host ""
-
-# Define the date range options
-$today = (Get-Date).Date
-$dateOptions = @{
-    "1" = @{
-        "label" = "last month"
-        "start" = $today.AddMonths(-1)
-    }
-    "2" = @{
-        "label" = "last 3 months"
-        "start" = $today.AddMonths(-3)
-    }
-    "3" = @{
-        "label" = "last 6 months"
-        "start" = $today.AddMonths(-6)
-    }
-    "4" = @{
-        "label" = "last year"
-        "start" = $today.AddYears(-1)
-    }
-}
 
 # Prompt the user to choose a date range option
-Write-Host "Step 3: Choose a date range option:" -ForegroundColor Green
-$dateOptions.Keys | ForEach-Object { Write-Host "[$_]: $($dateOptions[$_].label)" }
-$selectedOption = Read-Host "Enter the number of the desired option"
-$selectedStartDate = $dateOptions[$selectedOption].start
+Write-Host "Step 2: Choose a date range option:" -ForegroundColor Green
+Write-Host "[1]: last month" -ForegroundColor Yellow
+Write-Host "[2]: last 3 months" -ForegroundColor Yellow
+Write-Host "[3]: last 6 months" -ForegroundColor Yellow
+Write-Host "[4]: last year" -ForegroundColor Yellow
 
-# Search for Set-Mailbox audit logs related to the suspected mailbox
-Write-Host "Step 4: Searching for Set-Mailbox audit logs related to the suspected mailbox in Exchange..." -ForegroundColor Green
-$exchangeAuditLogs = Search-AdminAuditLog -Cmdlets Set-Mailbox -Parameters Identity -ObjectIds $suspectedEmailAddress -StartDate $selectedStartDate
-Write-Host "Exchange audit logs retrieved." -ForegroundColor Yellow
+$dateRangeChoice = Read-Host "Enter the number for the desired date range"
 Write-Host ""
+
+switch ($dateRangeChoice) {
+    "1" { $startDate = (Get-Date).AddMonths(-1) }
+    "2" { $startDate = (Get-Date).AddMonths(-3) }
+    "3" { $startDate = (Get-Date).AddMonths(-6) }
+    "4" { $startDate = (Get-Date).AddYears(-1) }
+    default { Write-Host "Invalid choice. Exiting."; exit }
+}
+
+# Search for Set-Mailbox audit logs in Exchange
+Write-Host "Searching for Set-Mailbox audit logs in Exchange..." -ForegroundColor Green
+try {
+    $searchResults = Search-AdminAuditLog -Cmdlets Set-Mailbox -StartDate $startDate -ObjectIds $suspectedEmail
+} catch {
+    Write-Host "Error searching for Set-Mailbox audit logs: $_" -ForegroundColor Red
+}
 
 # Prompt the user for the username
-Write-Host "Step 5: Enter the username..." -ForegroundColor Green
+Write-Host "Step 3: Enter the username" -ForegroundColor Green
 $username = Read-Host "Username"
-
-# Get the user's distinguished name
-$UserDistinguishedName = (Get-ADUser -Identity $username).DistinguishedName
-
-# Get the Domain Controller name
-$Domain = Read-Host "Domain"
-
-# Query the AD replication attribute metadata for changes to the msExchGenericForwardingAddress property
-Write-Host "Step 6: Searching for changes to the msExchGenericForwardingAddress property in Active Directory..." -ForegroundColor Green
-$Changes = Get-ADReplicationAttributeMetadata -Object $UserDistinguishedName -Properties msExchGenericForwardingAddress $Domain -ChangedAfter $selectedStartDate
-Write-Host "Active Directory audit logs retrieved." -ForegroundColor Yellow
 Write-Host ""
 
-# Loop through the changes and look for corresponding Security events with event ID 5136
-$adAuditLogs = $Changes | ForEach-Object {
-    $Metadata = $_
-    $Event = Get-WinEvent -FilterHashtable @{
-        LogName   = 'Security'
-        Id        = 5136
-        StartTime = $Metadata.LastOriginatingChangeTime
-    } | Where-Object { $_.Properties[2].Value -eq $Metadata.AttributeName -and $_.Properties[1].Value -eq $UserDistinguishedName }
-	if ($Event) {
-    $Event | Select-Object TimeCreated,
-        @{Name='ChangedBy'; Expression={($_.Properties[0].Value)}},
-        @{Name='AttributeName'; Expression={($_.Properties[2].Value)}},
-        @{Name='OldValue'; Expression={($_.Properties[4].Value)}},
-        @{Name='NewValue'; Expression={($_.Properties[5].Value)}}
-	}
-}
+# Prompt the user for the Domain Controller
+Write-Host "Step 4: Enter the Domain Controller's name" -ForegroundColor Green
+$domainController = Read-Host "Domain Controller"
 Write-Host ""
 
-#Combine Exchange and Active Directory audit logs
-$auditLogs = $exchangeAuditLogs + $adAuditLogs
-
-#Ask the user if they want to save the output to a CSV file
-Write-Host "Step 7: Do you want to save the audit logs to a CSV file? (yes/no)" -ForegroundColor Green
-$saveToCsv = Read-Host "Answer"
-$saveToCsv = $saveToCsv.ToLower() -eq "yes"
-
-if ($saveToCsv) {
-	# Prompt the user for the output CSV file name
-	Write-Host "Enter the output CSV file name (without extension)..." -ForegroundColor Green
-	$csvFileName = Read-Host "CSV file name"
-	$csvFilePath = $csvFileName + ".csv"
-	Write-Host ""
-	
-	# Export audit logs to a CSV file
-	Write-Host "Step 8: Exporting audit logs to a CSV file..." -ForegroundColor Green
-	$auditLogs | Export-Csv -Path $csvFilePath -NoTypeInformation
-	Write-Host "Audit logs exported to $csvFilePath" -ForegroundColor Yellow
-	Write-Host ""
+# Search for changes to the msExchGenericForwardingAddress property in Active Directory
+Write-Host "Searching for changes to the msExchGenericForwardingAddress property in Active Directory..." -ForegroundColor Green
+try {
+    $UserDistinguishedName = (Get-ADUser -Identity $username).DistinguishedName
+    $Changes = Get-ADReplicationAttributeMetadata -Object $UserDistinguishedName -Properties msExchGenericForwardingAddress -Server $domainController
+} catch {
+    Write-Host "Error searching for changes to msExchGenericForwardingAddress property: $_" -ForegroundColor Red
 }
 
-#Display the audit logs on the screen
-Write-Host "Step 9: Displaying audit logs on the screen..." -ForegroundColor Green
-$auditLogs | Format-Table -AutoSize
-Write-Host "Operation completed." -ForegroundColor Yellow
+# Export changes to a CSV file
+Write-Host "Exporting changes to a temporary CSV file..." -ForegroundColor Green
+try {
+    $Changes | ForEach-Object {
+        $Metadata = $_
+        $Event = Get-WinEvent -FilterHashtable @{
+            LogName   = 'Security'
+            Id        = 5136
+            StartTime = $Metadata.LastOriginatingChangeTime
+        } | Where-Object { $_.Properties[2].Value -eq $Metadata.AttributeName -and $_.Properties[1].Value -eq $UserDistinguishedName }
+
+        if ($Event) {
+            $Event | Select-Object TimeCreated,
+                @{Name='ChangedBy'; Expression={($_.Properties[0].Value)}},
+                @{Name='AttributeName'; Expression={($_.Properties[2].Value)}},
+                @{Name='OldValue'; Expression={($_.Properties[4].Value)}},
+                @{Name='NewValue'; Expression={($_.Properties[5].Value)}}
+        }
+    } | Export-Csv -Path "SuspiciousActivity.csv" -NoTypeInformation
+} catch {
+    Write-Host "Error exporting changes to CSV: $_" -ForegroundColor Red
+}
+
+# Print the results on the screen
+Write-Host "Search Results:" -ForegroundColor Green
+Import-Csv -Path "SuspiciousActivity.csv" | Format-Table -AutoSize
+
+# Prompt the user to choose whether to save the results to a CSV file or not
+Write-Host "Step 5: Save the results to a CSV file?" -ForegroundColor Green
+Write-Host "[1]: Yes" -ForegroundColor Yellow
+Write-Host "[2]: No" -ForegroundColor Yellow
+
+$saveChoice = Read-Host "Enter the number for your choice"
+Write-Host ""
+
+switch ($saveChoice) {
+    "1" {
+        $filePath = Read-Host "Enter the file path where you want to save the results (e.g., C:\Results.csv)"
+        Export-Csv -Path $filePath -InputObject $(Import-Csv -Path "SuspiciousActivity.csv") -NoTypeInformation
+        Write-Host "Results saved to $filePath" -ForegroundColor Green
+    }
+    "2" { Write-Host "Results not saved to a CSV file." -ForegroundColor Green }
+    default { Write-Host "Invalid choice. Results not saved to a CSV file." -ForegroundColor Red }
+}
