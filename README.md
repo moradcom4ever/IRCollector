@@ -1,5 +1,5 @@
-Check Suspicious Activity PowerShell Script (CheckSuspiciousActivity.ps1)
---------------------------------------------------------------------------
+Check Suspicious Activity PowerShell Script (CheckSuspiciousActivity.ps1) and Batch File (RunCheckSuspiciousActivity.bat)
+------------------------------------------------------------------------------------------------------------------------
 
 Description:
 This script helps you investigate suspicious email forwarding activity in your Microsoft Exchange environment. It searches for Set-Mailbox audit logs in Exchange, changes to the msExchGenericForwardingAddress property in Active Directory, and then displays the results on the screen. Optionally, you can save the results to a CSV file.
@@ -23,9 +23,8 @@ How to install requirements:
    To install the Exchange Management Shell, you must install the Exchange server on the machine where you plan to run the script, or install the Exchange admin center tools. For more information, refer to the following Microsoft documentation: https://docs.microsoft.com/en-us/exchange/exchange-management-shell
 
 Usage:
-1. Open PowerShell as an administrator.
-2. Navigate to the folder containing the CheckSuspiciousActivity.ps1 script.
-3. Run the script by entering ".\CheckSuspiciousActivity.ps1" (without quotes) and pressing Enter.
+1. Ensure both CheckSuspiciousActivity.ps1 and RunCheckSuspiciousActivity.bat are in the same folder.
+2. Right-click the RunCheckSuspiciousActivity.bat file and select "Run as administrator" or open Command Prompt as an administrator, navigate to the folder containing the batch file, and run the batch file by entering "RunCheckSuspiciousActivity.bat" (without quotes) and pressing Enter.
 
 During the execution of the script, you will be prompted to provide the following information:
 - Suspected email address
